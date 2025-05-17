@@ -1,42 +1,40 @@
-// index.js
+// functions/index.js
+const functions = require('firebase-functions');
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const admin = require('firebase-admin');
-const dotenv = require('dotenv');
-
-// Load environment variables
-dotenv.config();
-
-// Initialize Express app
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
 
 // Initialize Firebase Admin SDK
-const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+admin.initializeApp();
 
-// API endpoints
-app.post('/api/send-notification', async (req, res) => {
+// Create Express app
+const app = express();
+
+// Middleware
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+// Notification endpoint
+app.post('/send-notification', async (req, res) => {
   try {
-    const { targetUserId, type, connectionId, fromUserId, username } = req.body;
+    const { targetUserId, type, connectionId, fromUserId } = req.body;
     
-    if (!targetUserId || !type || !connectionId || !fromUserId || !username) {
+    if (!targetUserId || !type || !connectionId || !fromUserId) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
     
     // Get the target user's FCM token
     const userDoc = await admin.firestore().collection('users').doc(targetUserId).get();
+     const userSenderDoc = await admin.firestore().collection('users').doc(fromUserId).get();
     
     if (!userDoc.exists) {
       return res.status(404).json({ error: 'Target user not found' });
     }
     
     const userData = userDoc.data();
+    const userSenderData = userSenderDoc.data();
     const fcmToken = userData.fcmToken;
+    const senderUsername = userSenderData.username;
     
     if (!fcmToken) {
       return res.status(404).json({ error: 'Target user has no FCM token' });
@@ -47,21 +45,21 @@ app.post('/api/send-notification', async (req, res) => {
     
     if (type === 'connection_request') {
       title = 'New Connection Request';
-      body = `@${username} wants to connect with you`;
+      body = `@${senderUsername} wants to connect with you`;
     } else if (type === 'connection_accepted') {
       title = 'Connection Accepted';
-      body = `@${username} accepted your connection request`;
+      body = `@${senderUsername} accepted your connection request`;
     } else {
       return res.status(400).json({ error: 'Invalid notification type' });
     }
     
-    // Prepare message (Send data only to ensure our handler processes it)
+    // Prepare message (Send data only to ensure handler processes it)
     const message = {
       data: {
         type: type,
         connectionId: connectionId,
         userId: fromUserId,
-        username: username,
+        username: senderUsername,
         title: title,
         body: body,
         screen: '/home/inbox',
@@ -79,8 +77,5 @@ app.post('/api/send-notification', async (req, res) => {
   }
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Export the API as a Firebase Function
+exports.notifications = functions.https.onRequest(app);

@@ -1,0 +1,12 @@
+# Node modules
+node_modules/
+
+# Custom build/output or other directory
+end/
+
+# Service account key
+serviceAccountKey.json
+
+# Optional: ignore logs, environment files, etc.
+*.log
+.env
